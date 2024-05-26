@@ -1,29 +1,46 @@
-import { useReducer } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 
 function reducer(state, action) {
   switch (action.type) {
     case "set":
-      state = action.value;
-      return state;
+      return action.value;
     default:
       throw new Error();
   }
 }
 
 export function useBroadcast(name, initialState) {
-  let [state, dispatch] = useReducer(reducer, initialState);
-  let channel = new BroadcastChannel(name);
-
-  channel.onmessage = function(event) {
-    event.preventDefault();
-    let { data: value } = event;
-    dispatch({ type: "set", value });
-  };
-
-  function setState(value) {
-    channel.postMessage(value);
-    dispatch({ type: "set", value });
+    const [state, dispatch] = useReducer(reducer, initialState);
+    const channelRef = useRef(null); 
+  
+    useEffect(() => {
+      const channel = new BroadcastChannel(name);
+      channelRef.current = channel;
+  
+      const listener = (event) => {
+        let { data: value } = event;
+        dispatch({ type: "set", value });
+      };
+  
+      channel.addEventListener("message", listener);
+  
+      return () => {
+        channelRef.current = null;
+        channel.removeEventListener("message", listener);
+        channel.close();
+      };
+    }, [name]);
+  
+    const setState = useCallback((value) => {
+      if (channelRef.current) {
+        try {
+          channelRef.current.postMessage(value);
+          dispatch({ type: "set", value });
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    }, []);
+  
+    return [state, setState];
   }
-
-  return [state, setState];
-}
